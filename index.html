@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Files</title>
+<style>
+:root{
+  --bg:#1a1a1a;
+  --line:#2b2b2b;
+  --fg:#ebe8e1;
+  --dim:#8d8b86;
+  --U:1267px;              /* width of the folder stack (set from JS) */
+  --T:45px;                /* tab height (set from JS) */
+  --H:1267px;              /* opened folder height (set from JS) */
+  --S:calc(var(--T) * 1.05);
+  --ease:cubic-bezier(.2,.8,.2,1);
+  --zoom:cubic-bezier(.7,0,.2,1);
+  --paper:#eeebe3;
+  --pink:#d98b9f;
+  --yellow:#f5df6f;
+  --noise:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .055 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --shL:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 45' preserveAspectRatio='none'%3E%3Cpath d='M0 45C11 45 15 39 18.5 29C23.4 15 28 0 44 0V45Z'/%3E%3C/svg%3E");
+  --shR:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 45' preserveAspectRatio='none'%3E%3Cpath d='M44 45C33 45 29 39 25.5 29C20.6 15 16 0 0 0V45Z'/%3E%3C/svg%3E");
+}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+html{scrollbar-gutter:stable;background:var(--bg)}
+body{background:var(--bg);color:var(--fg);min-height:100vh;
+  font-family:"Iowan Old Style","Palatino Linotype",Georgia,serif;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+
+/* ---------- folder tab shape (shared by index + detail) ---------- */
+.tabshape{
+  -webkit-mask:
+    var(--shL) 0 0 / var(--S) var(--T) no-repeat,
+    linear-gradient(#000,#000) 50% 0 / calc(100% - 2 * var(--S) + 2px) var(--T) no-repeat,
+    var(--shR) 100% 0 / var(--S) var(--T) no-repeat,
+    linear-gradient(#000,#000) 0 100% / 100% 7px no-repeat;
+          mask:
+    var(--shL) 0 0 / var(--S) var(--T) no-repeat,
+    linear-gradient(#000,#000) 50% 0 / calc(100% - 2 * var(--S) + 2px) var(--T) no-repeat,
+    var(--shR) 100% 0 / var(--S) var(--T) no-repeat,
+    linear-gradient(#000,#000) 0 100% / 100% 7px no-repeat;
+}
+.lbl{position:absolute;left:0;right:0;top:0;height:var(--T);display:flex;align-items:center;justify-content:center;
+  font-size:calc(var(--T) * .58);white-space:nowrap;pointer-events:none}
+
+/* ---------- index ---------- */
+#index{position:relative;overflow:hidden}
+.nav{position:relative;height:80px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:center}
+.nav .logo{width:48px;height:48px;border:1.5px solid var(--fg);border-radius:50%}
+.nav .search{position:absolute;left:calc(50% + 68px);top:50%;width:22px;height:22px;margin-top:-11px;color:var(--fg)}
+.head{width:var(--U);height:calc(var(--U) * .2);margin:0 auto;padding:calc(var(--U) * .05) 0 0 calc(var(--U) * .052)}
+.crumbs{min-height:18px;font:14px/1.3 system-ui,sans-serif;color:var(--dim)}
+.title{font-weight:400;letter-spacing:-.02em;line-height:1}
+.head .title{font-size:calc(var(--U) * .047);margin-top:14px}
+
+.stack{position:relative;width:var(--U);margin:0 auto}
+.row{position:absolute;left:0;top:0;width:100%;transform-origin:50% 0;transition:transform .55s var(--ease);will-change:transform}
+.folder{position:absolute;left:0;top:0;width:100%;height:0;pointer-events:none}
+.folder .tab{position:absolute;top:0;left:calc(var(--a) * var(--U));width:calc(var(--U) * .304);height:calc(var(--T) + 6px);
+  background:var(--c);pointer-events:auto;cursor:pointer;outline:none}
+.folder .body{position:absolute;left:0;top:calc(var(--T) - 1px);width:100%;height:calc(var(--U) * 1.6);background:var(--c);
+  border-top-right-radius:6px;pointer-events:auto;cursor:pointer}
+.folder .pv{position:absolute;left:calc(var(--U) * .06);right:calc(var(--U) * .09);top:calc(var(--U) * .03);min-height:40px;
+  opacity:0;transition:opacity .35s ease}
+.row.open .folder:first-child .pv,.row:last-child .folder:first-child .pv{opacity:1}
+
+/* ---------- detail ---------- */
+#detail{position:absolute;left:0;top:0;width:100%;overflow:hidden;z-index:10;display:none}
+#detail.show{display:block}
+#detail.flying{position:fixed;inset:0;height:auto!important}
+.dbar{position:fixed;left:0;right:0;top:0;height:56px;background:var(--bg);z-index:40}
+.ibtn{width:26px;height:26px;border:0;border-radius:5px;background:transparent;color:var(--dim);
+  display:grid;place-items:center;cursor:pointer;transition:background .2s,color .2s}
+.ibtn:hover,.ibtn:focus-visible{color:var(--fg);background:#2a2a2a;outline:none}
+.ibtn.on{background:#353535;color:var(--fg)}
+.ibtn svg{width:16px;height:16px}
+.dbar .back{position:absolute;left:calc((100% - var(--U)) / 2 + var(--U) * .052 - 6px);top:15px}
+.dbar .crumbs{position:absolute;left:calc((100% - var(--U)) / 2 + var(--U) * .052 + 30px);top:19px}
+.views{position:absolute;right:calc((100% - var(--U)) / 2 + var(--U) * .1);top:15px;display:flex;gap:6px}
+.dhead{position:absolute;top:56px;left:calc((100% - var(--U)) / 2 + var(--U) * .045);right:calc((100% - var(--U)) / 2);
+  height:calc(var(--H) * .15);display:flex;justify-content:space-between;align-items:flex-start;padding-top:calc(var(--H) * .012)}
+.dhead .title{font-size:calc(var(--H) * .085)}
+.dhead .meta{width:calc(var(--U) * .17);min-height:40px;font:12px/1.35 ui-monospace,Menlo,Consolas,monospace;color:var(--fg)}
+
+.board{position:absolute;left:0;top:0;transform-origin:50% 50%;will-change:transform}
+.board.anim{transition:transform .8s var(--zoom)}
+.panel{position:absolute;inset:0;background:var(--c);border-radius:0 0 6px 0}
+.panel .ptab{position:absolute;left:calc(100% - 1px);top:calc(var(--a) * 100% - var(--T));width:calc(var(--H) * .304);
+  height:calc(var(--T) + 6px);background:var(--c);transform-origin:0 var(--T);transform:rotate(90deg);
+  outline:none;transition:transform .25s var(--ease)}
+.panel:not(.main) .ptab{cursor:pointer}
+.panel:not(.main) .ptab:hover,.panel:not(.main) .ptab:focus-visible{transform:rotate(90deg) translateY(-5px)}
+
+.paper{position:absolute;left:0;top:0;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;
+  filter:drop-shadow(0 1px 1px rgba(0,0,0,.28)) drop-shadow(0 6px 14px rgba(0,0,0,.16));
+  transition:filter .15s ease,scale .25s var(--ease)}
+.paper.anim{transition:transform .8s var(--zoom),filter .15s ease,scale .25s var(--ease)}
+.paper.pressed{filter:drop-shadow(0 1px 1px rgba(0,0,0,.28)) drop-shadow(0 6px 14px rgba(0,0,0,.16)) brightness(.86)}
+.paper.dragging{cursor:grabbing;scale:1.012;
+  filter:drop-shadow(0 2px 2px rgba(0,0,0,.25)) drop-shadow(0 18px 32px rgba(0,0,0,.3))}
+.face{position:absolute;inset:0;background:var(--noise) 0 0 / 200px 200px,var(--pc)}
+.sheet .face{--pc:var(--paper);-webkit-mask-size:100% 100%;mask-size:100% 100%}
+.sheet .rule{position:absolute;left:12%;right:6%;bottom:3%;height:1px;background:rgba(30,30,30,.35)}
+.sheet .perf{position:absolute;right:3.8%;top:6%;height:22%;width:1.5px;
+  background:repeating-linear-gradient(to bottom,rgba(30,30,30,.55) 0 2px,transparent 2px 5px)}
+.pink .face{--pc:var(--pink)}
+.receipt .face{--pc:var(--yellow)}
+.receipt .clip{position:absolute;left:86%;top:24%;width:15%;height:auto;transform:rotate(26deg);transform-origin:50% 30%;
+  filter:drop-shadow(0 1px 1px rgba(0,0,0,.35))}
+.fall{position:absolute;height:0;transform-origin:0 0;pointer-events:none;z-index:30}
+
+@media (prefers-reduced-motion:reduce){
+  .row,.board.anim,.paper.anim,.panel .ptab{transition-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+
+<div id="index">
+  <header class="nav">
+    <span class="logo" aria-hidden="true"></span>
+    <svg class="search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>
+  </header>
+  <section class="head">
+    <div class="crumbs"></div>
+    <h1 class="title"></h1>
+  </section>
+  <div class="stack" id="stack"></div>
+</div>
+
+<div id="detail" aria-live="polite">
+  <div class="dbar">
+    <button class="ibtn back" aria-label="Back to all folders">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8H3.5M7.5 3.5 3 8l4.5 4.5"/></svg>
+    </button>
+    <div class="crumbs"></div>
+    <div class="views">
+      <button class="ibtn on" data-view="pile" aria-label="Pile view">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="4.5" width="8.5" height="9.5" rx="1.2"/><path d="M5.5 2h7.3c.7 0 1.2.5 1.2 1.2V11"/></svg>
+      </button>
+      <button class="ibtn" data-view="spread" aria-label="Spread view">
+        <svg viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="2" width="5.2" height="5.2" rx="1"/><rect x="8.8" y="2" width="5.2" height="5.2" rx="1"/><rect x="2" y="8.8" width="5.2" height="5.2" rx="1"/><rect x="8.8" y="8.8" width="5.2" height="5.2" rx="1"/></svg>
+      </button>
+    </div>
+  </div>
+  <section class="dhead">
+    <h1 class="title"></h1>
+    <div class="meta"></div>
+  </section>
+  <div class="board" id="board"></div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // Each row is one level of the cabinet; colours are listed front (tab 1) to back (tab 3).
+  const ROWS = [
+    ['#6c0a44'],
+    ['#e8582a', '#3a1d8b', '#0a0a0a'],
+    ['#0e7864'],
+    ['#d51f27', '#1f4bd6'],
+    ['#5a1b71', '#ef2c2c', '#fde52f'],
+    ['#1f4bd6'],
+    ['#c13c7d', '#fde52f'],
+    ['#1f4bd6'],
+  ];
+  const TAB_A = [0, .32, .635];   // tab offsets as a fraction of the stack width
+  const RATIO = 1.515;            // opened folder: width / height
+
+  // Paper sizes & positions in units of the opened folder's height.
+  const PAPERS = {
+    sheet:   { w: .747, h: .969, pile: { x: .731, y: .026, r: 0 },  spread: { x: .736, y: .026, r: 0 } },
+    pink:    { w: .687, h: .53,  pile: { x: .730, y: .346, r: 0 },  spread: { x: .026, y: .031, r: 0 } },
+    receipt: { w: .237, h: .282, pile: { x: 1.18, y: .404, r: -2 }, spread: { x: .244, y: .646, r: -3 } },
+  };
+
+  const CLIP_SVG = '<svg class="clip" viewBox="0 0 32 92" fill="none" stroke-linecap="round">' +
+    '<path d="M11 28V70a5 5 0 0 0 10 0V12a8.5 8.5 0 0 0-17 0v64a12 12 0 0 0 24 0V24" stroke="#7b7d82" stroke-width="2.4"/>' +
+    '<path d="M11 28V70a5 5 0 0 0 10 0V12a8.5 8.5 0 0 0-17 0v64a12 12 0 0 0 24 0V24" stroke="#dcdde0" stroke-width=".8" transform="translate(-.5 -.5)"/></svg>';
+
+  const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const ms = v => (RM ? 1 : v);
+  const $ = s => document.querySelector(s);
+  const root = document.documentElement;
+  const indexEl = $('#index'), navEl = $('#index .nav'), headEl = $('#index .head'), stack = $('#stack');
+  const detail = $('#detail'), board = $('#board'), dbar = $('#detail .dbar'), dhead = $('#detail .dhead');
+  const backBtn = $('#detail .back');
+  const viewBtns = [...document.querySelectorAll('.views button')];
+
+  let D = {}, rows = [], open = -1, busy = false, isOpen = false, view = 'pile';
+  let cur = null;                   // the open row: { ri, main, folders: [{ p, key, panel, papers, receipt, zTop }] }
+  let anims = [], chromeAnims = [], viewTimer = 0, queued = null, resizePending = false;
+  const saved = new Map();          // paper positions remembered per folder
+
+  const clamp = (a, v, b) => Math.max(a, Math.min(b, v));
+  const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
+
+  function measure() {
+    const vw = root.clientWidth, vh = window.innerHeight;
+    // Size from both width and height so short/wide windows keep the same framing as the reference.
+    const U = vw <= 800 ? vw - 32 : Math.min(vw * .792, vh * 1.15, 1500);
+    const T = clamp(22, U * .0355, 56);
+    // The opened folder fits its height to the window: title area + ~70% of the folder in view.
+    const H = Math.min(U, Math.max(240, (vh - 56) / .9));
+    D = {
+      vw, vh, U, T,
+      step: T * 1.29,
+      E: Math.max(U * .11, T * 3),
+      lastBody: U * .34,
+      H, W: H * RATIO,
+      Tb: (T * H) / U,             // tab height on the opened folder (same proportions as the stack)
+      Tf: 56 + H * .193,
+    };
+    root.style.setProperty('--U', U + 'px');
+    root.style.setProperty('--T', T + 'px');
+    root.style.setProperty('--H', H + 'px');
+  }
+
+  // Run an action now, or right after the current animation if one is playing.
+  function request(fn) { if (busy) queued = fn; else fn(); }
+  function settle() {
+    busy = false;
+    if (resizePending) { resizePending = false; onResize(); }
+    const q = queued;
+    queued = null;
+    if (q) q();
+  }
+
+  /* ---------------- index: folder stack ---------------- */
+  function buildStack() {
+    ROWS.forEach((colors, i) => {
+      const row = el('div', 'row');
+      row.dataset.i = i;
+      const folders = colors.map((c, p) => {
+        const f = el('div', 'folder');
+        f.dataset.p = p;
+        f.style.setProperty('--c', c);
+        f.style.setProperty('--a', TAB_A[p]);
+        f.style.zIndex = 3 - p;
+        f.innerHTML = '<div class="tab tabshape" tabindex="0" role="button" aria-label="Open folder"><span class="lbl"></span></div>' +
+                      '<div class="body"><div class="pv"></div></div>';
+        row.appendChild(f);
+        return f;
+      });
+      stack.appendChild(row);
+      rows.push({ el: row, folders });
+    });
+  }
+
+  const rowY = i => i * D.step + (open >= 0 && i > open ? D.E : 0);
+
+  function layoutRows() {
+    rows.forEach((r, i) => {
+      const s = open < 0 ? 1 : i === open ? 1.002 : i > open ? 1.005 : 1;
+      r.el.style.transform = `translateY(${rowY(i)}px) scale(${s})`;
+      r.el.classList.toggle('open', i === open);
+    });
+    stack.style.height = ((rows.length - 1) * D.step + D.T + D.lastBody + D.E) + 'px';
+  }
+
+  function setOpen(i) {
+    if (busy || isOpen || i === open) return;
+    open = i;
+    layoutRows();
+  }
+
+  const folderTarget = t => {
+    const f = t.closest('.folder');
+    return f && [+f.closest('.row').dataset.i, +f.dataset.p];
+  };
+  stack.addEventListener('pointerover', e => {
+    const r = e.target.closest('.row');
+    if (r) setOpen(+r.dataset.i);
+  });
+  stack.addEventListener('pointerleave', () => setOpen(-1));
+  stack.addEventListener('focusin', e => {
+    const r = e.target.closest('.row');
+    if (r) setOpen(+r.dataset.i);
+  });
+  stack.addEventListener('click', e => {
+    const t = folderTarget(e.target);
+    if (t) openDetail(...t);
+  });
+  stack.addEventListener('keydown', e => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('tab')) {
+      e.preventDefault();
+      openDetail(...folderTarget(e.target));
+    }
+  });
+
+  /* ---------------- detail: opened folder ---------------- */
+  // Torn top edge for the receipt (seeded so it is the same every time).
+  function tornEdge(seed) {
+    let s = seed;
+    const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+    const pts = [];
+    for (let x = 0; x <= 100; x += 2.5) pts.push(`${x}% ${(1 + rnd() * 4.5).toFixed(2)}%`);
+    pts.push('100% 100%', '0 100%');
+    return `polygon(${pts.join(',')})`;
+  }
+  const TORN = tornEdge(7);
+
+  // Punched holes are real cut-outs (whatever is underneath shows through).
+  const HOLES = (() => {
+    const w = 747, h = 969, r = 7.2, cx = 30;
+    let d = `M0 0H${w}V${h}H0Z`;
+    for (let k = 0; k < 9; k++) {
+      const cy = (h * (k + .5)) / 9;
+      d += `M${cx} ${(cy - r).toFixed(1)}a${r} ${r} 0 1 0 0 ${2 * r}a${r} ${r} 0 1 0 0 ${-2 * r}Z`;
+    }
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path fill-rule="evenodd" d="${d}"/></svg>`;
+    return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+  })();
+
+  function makePaper(id, parent) {
+    const e = el('div', 'paper ' + id);
+    if (id === 'sheet') {
+      e.innerHTML = '<div class="face"><i class="perf"></i><i class="rule"></i></div>';
+      e.firstChild.style.webkitMaskImage = e.firstChild.style.maskImage = HOLES;
+    } else if (id === 'receipt') {
+      e.innerHTML = '<div class="face"></div>' + CLIP_SVG;
+      e.firstChild.style.clipPath = TORN;
+    } else {
+      e.innerHTML = '<div class="face"></div>';
+    }
+    parent.appendChild(e);
+    return e;
+  }
+
+  // Every folder in the row becomes a panel; each panel carries its own papers.
+  function buildBoard(ri, pi) {
+    board.innerHTML = '';
+    const folders = ROWS[ri].map((c, p) => {
+      const panel = el('div', 'panel');
+      panel.dataset.p = p;
+      panel.style.setProperty('--c', c);
+      panel.style.setProperty('--a', TAB_A[p]);
+      panel.innerHTML = '<div class="ptab tabshape" role="button"><span class="lbl"></span></div>';
+      board.appendChild(panel);
+
+      const key = ri + '-' + p, mem = saved.get(key);
+      let zTop = 0;
+      const papers = Object.entries(PAPERS).map(([id, cfg], k) => {
+        const m = mem && mem.papers[id];
+        const q = {
+          id, cfg, el: makePaper(id, panel),
+          z: m ? m.z : k + 1,
+          pos: m ? { pile: { ...m.pos.pile }, spread: { ...m.pos.spread } } : { pile: { ...cfg.pile }, spread: { ...cfg.spread } },
+        };
+        zTop = Math.max(zTop, q.z);
+        return q;
+      });
+      const receipt = papers.find(q => q.id === 'receipt');
+      receipt.attached = mem ? mem.attached : true;   // clipped to the pink sheet until pulled off
+      return { p, key, panel, papers, receipt, zTop };
+    });
+    cur = { ri, main: pi, folders };
+    setMain(pi);
+    // Folders that sat in front of the clicked one drop away; their tabs tuck back in later.
+    folders.forEach(f => { if (f.p < pi) f.panel.style.transform = `translateX(${-(D.Tb + 10)}px)`; });
+    sizeBoard();
+  }
+
+  function setMain(p) {
+    cur.main = p;
+    cur.folders.forEach(f => {
+      const isMain = f.p === p;
+      const tab = f.panel.querySelector('.ptab');
+      f.panel.classList.toggle('main', isMain);
+      f.panel.style.zIndex = isMain ? 3 : 1;
+      tab.tabIndex = isMain ? -1 : 0;
+      if (isMain) tab.removeAttribute('aria-label');
+      else tab.setAttribute('aria-label', 'Switch to this folder');
+    });
+  }
+
+  const allPapers = () => (cur ? cur.folders.flatMap(f => f.papers) : []);
+  const folderOf = p => cur.folders.find(f => f.p === p);
+
+  function remember() {
+    if (!cur) return;
+    cur.folders.forEach(f => {
+      const papers = {};
+      f.papers.forEach(q => (papers[q.id] = { z: q.z, pos: { pile: { ...q.pos.pile }, spread: { ...q.pos.spread } } }));
+      saved.set(f.key, { papers, attached: f.receipt.attached });
+    });
+  }
+
+  function sizeBoard() {
+    board.style.width = D.W + 'px';
+    board.style.height = D.H + 'px';
+    board.style.setProperty('--H', D.H + 'px');
+    board.style.setProperty('--T', D.Tb + 'px');
+    board.style.setProperty('--S', D.Tb * 1.05 + 'px');
+    allPapers().forEach(placePaper);
+  }
+
+  function placePaper(q) {
+    const v = q.pos[view], H = D.H;
+    q.el.style.width = q.cfg.w * H + 'px';
+    q.el.style.height = q.cfg.h * H + 'px';
+    q.el.style.transform = `translate(${v.x * H}px, ${v.y * H}px) rotate(${v.r}deg)`;
+    q.el.style.zIndex = q.z;
+  }
+
+  function viewT(v) {
+    const { vw, vh, U, Tb, W, H, Tf } = D;
+    if (v === 'pile') return { cx: (vw + U) / 2 - Tb - W / 2, cy: Tf + H / 2, s: 1 };
+    const top = Tf - H * .03, m = Math.max(16, vw * .075);
+    const s = Math.max(.2, Math.min((vw - 2 * m) / (W + Tb), (vh - top - 48) / H));
+    return { cx: vw / 2 - (Tb * s) / 2, cy: top + (H * s) / 2, s };
+  }
+  const tf = (cx, cy, deg, s) => `translate(${cx - D.W / 2}px, ${cy - D.H / 2}px) rotate(${deg}deg) scale(${s})`;
+  const docH = v => {
+    if (v === 'pile') return D.Tf + D.H * 1.07;
+    const t = viewT('spread');
+    return Math.max(D.vh, t.cy + (D.H * t.s) / 2 + 48);
+  };
+
+  // Where a folder of the stack sits on screen, expressed as an opened-folder transform.
+  function stackPose(R, p) {
+    const b = R.folders[p].querySelector('.body').getBoundingClientRect();
+    const s0 = b.width / D.H;
+    return tf(b.left + b.width / 2, b.top + (D.W * s0) / 2, -90, s0);
+  }
+
+  function fallGroup(R, pi) {
+    if (pi === 0) return null;
+    const r = R.el.getBoundingClientRect();
+    const g = el('div', 'fall');
+    Object.assign(g.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px' });
+    for (let p = 0; p < pi; p++) g.appendChild(R.folders[p].cloneNode(true));
+    detail.appendChild(g);
+    return g;
+  }
+  const fallKF = () => [
+    { transform: 'none' },
+    { transform: `translate(${-D.vw * .02}px, ${D.vh * .08}px) rotate(16deg)`, offset: .22 },
+    { transform: `translate(${-D.vw * .12}px, ${D.vh * 1.2}px) rotate(28deg)` },
+  ];
+
+  /* ---------------- stack -> folder ---------------- */
+  function openDetail(ri, pi, fromHistory) {
+    if (busy || isOpen) return;
+    busy = true;
+    view = 'pile';
+    syncButtons();
+    if (!fromHistory) history.pushState({ detail: 1, ri, pi }, '', '#folder');
+
+    const R = rows[ri];
+    const k0 = stackPose(R, pi);
+    indexEl.style.minHeight = (window.scrollY + D.vh) + 'px';
+
+    // Phase 1 — the rest of the cabinet clears out.
+    rows.forEach((r, i) => {
+      if (i < ri) {
+        anims.push(r.el.animate([{ transform: `translateY(${rowY(ri)}px)`, opacity: 0 }],
+          { duration: ms(300), delay: ms((ri - 1 - i) * 50), easing: 'cubic-bezier(.4,0,.8,.4)', fill: 'forwards' }));
+      } else if (i > ri) {
+        anims.push(r.el.animate([{ transform: `translateY(${rowY(i) + D.vh * 1.15}px)` }],
+          { duration: ms(560), delay: ms((i - ri - 1) * 45), easing: 'cubic-bezier(.55,0,.85,.4)', fill: 'forwards' }));
+      }
+    });
+    anims.push(navEl.animate([{ opacity: 0, transform: 'translateY(-12px)' }], { duration: ms(280), easing: 'ease-out', fill: 'forwards' }));
+    anims.push(headEl.animate([{ opacity: 0 }], { duration: ms(240), easing: 'ease-out', fill: 'forwards' }));
+
+    // Phase 2 — the folder is pulled out and swung 90° into the reading position.
+    setTimeout(async () => {
+      buildBoard(ri, pi);
+      detail.style.height = '';
+      detail.classList.add('show', 'flying');
+      board.style.transform = k0;
+      const fin = viewT('pile');
+      const k1 = tf(fin.cx, fin.cy, 0, 1);
+
+      const fall = fallGroup(R, pi);
+      R.el.style.visibility = 'hidden';
+
+      const swing = board.animate([{ transform: k0 }, { transform: k1 }],
+        { duration: ms(850), easing: 'cubic-bezier(.33,1,.68,1)', fill: 'forwards' });
+      // Papers are hidden behind the falling folders anyway; only fade them when nothing covers them.
+      if (pi === 0) folderOf(pi).papers.forEach(q => q.el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms(180), easing: 'ease-out', fill: 'backwards' }));
+      [dbar, dhead].forEach(e => e.animate([{ opacity: 0 }, { opacity: 1 }],
+        { duration: ms(420), delay: ms(250), easing: 'ease-out', fill: 'backwards' }));
+      const waits = [swing.finished];
+      if (fall) waits.push(fall.animate(fallKF(), { duration: ms(900), easing: 'cubic-bezier(.4,0,.7,.45)', fill: 'forwards' }).finished);
+
+      await swing.finished;
+      board.style.transform = k1;
+      swing.cancel();
+
+      // Tabs of the folders that fell away tuck back in behind the open folder.
+      await Promise.all(cur.folders.filter(f => f.p < pi).map(f => {
+        const a = f.panel.animate([{ transform: 'none' }], { duration: ms(420), easing: 'cubic-bezier(.33,1,.68,1)', fill: 'forwards' });
+        return a.finished.then(() => { f.panel.style.transform = ''; a.cancel(); });
+      }).concat(waits));
+      if (fall) fall.remove();
+
+      // Hand over from the fixed overlay to a normal scrolling page.
+      indexEl.hidden = true;
+      detail.classList.remove('flying');
+      window.scrollTo(0, 0);
+      detail.style.height = docH('pile') + 'px';
+      isOpen = true;
+      settle();
+    }, ms(300));
+  }
+
+  /* ---------------- folder -> stack (the opening, played backwards) ---------------- */
+  async function closeDetail() {
+    if (!isOpen || busy) return;
+    busy = true;
+    clearTimeout(viewTimer);
+    remember();
+    const ri = cur.ri, pi = cur.main, R = rows[ri];
+    const papers = allPapers();
+    board.classList.remove('anim');
+    papers.forEach(q => q.el.classList.remove('anim', 'pressed', 'dragging'));
+
+    // Freeze the folder where it is on screen and hand it to the fixed overlay.
+    const t = viewT(view), sy = window.scrollY;
+    const kNow = tf(t.cx, t.cy - sy, 0, t.s);
+    board.style.transform = kNow;
+    if (sy > 0) dhead.style.visibility = 'hidden';
+
+    // Lay the cabinet out at rest while it is still hidden (so the hover transition doesn't kick in);
+    // everything but this row starts "away" and comes back.
+    anims.forEach(a => a.cancel());
+    anims = [];
+    open = -1;
+    layoutRows();
+    R.el.style.visibility = 'hidden';
+    indexEl.style.minHeight = D.vh + 'px';
+    detail.classList.add('flying');
+    indexEl.hidden = false;
+    window.scrollTo(0, 0);
+    const kEnd = stackPose(R, pi);
+
+    const START = 120, SWING = 700, LAND = START + SWING;
+    chromeAnims = [dbar, dhead].map(e => e.animate([{ opacity: 0 }], { duration: ms(220), easing: 'ease-out', fill: 'forwards' }));
+    cur.folders.forEach(f => {
+      if (f.p < pi) f.panel.animate([{ transform: `translateX(${-(D.Tb + 10)}px)` }], { duration: ms(240), easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' });
+    });
+    const swing = board.animate([{ transform: kNow }, { transform: kEnd }],
+      { duration: ms(SWING), delay: ms(START), easing: 'cubic-bezier(.5,0,.25,1)', fill: 'forwards' });
+    papers.forEach(q => q.el.animate([{ opacity: 0 }], { duration: ms(150), delay: ms(LAND - 150), fill: 'forwards' }));
+
+    // Folders that were in front rise back up over it.
+    const fall = fallGroup(R, pi);
+    if (fall) fall.animate(fallKF().reverse().map((k, n) => ({ ...k, offset: n === 1 ? .78 : undefined })),
+      { duration: ms(640), delay: ms(LAND - 640), easing: 'cubic-bezier(.25,.6,.35,1)', fill: 'both' });
+
+    rows.forEach((r, i) => {
+      if (i === ri) return;
+      const rest = r.el.style.transform;
+      if (i < ri) {
+        anims.push(r.el.animate([{ transform: `translateY(${rowY(ri)}px)`, opacity: 0 }, { transform: rest, opacity: 1 }],
+          { duration: ms(420), delay: ms(LAND - 380 + (ri - 1 - i) * 50), easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' }));
+      } else {
+        // Rows below come back only once the folder has landed (the overlay would hide them otherwise).
+        anims.push(r.el.animate([{ transform: `translateY(${rowY(i) + D.vh * 1.15}px)` }, { transform: rest }],
+          { duration: ms(520), delay: ms(LAND + 20 + (i - ri - 1) * 45), easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' }));
+      }
+    });
+    [navEl, headEl].forEach(e => anims.push(e.animate([{ opacity: 0 }, { opacity: 1 }],
+      { duration: ms(400), delay: ms(LAND - 300), easing: 'ease-out', fill: 'backwards' })));
+
+    await swing.finished;
+    R.el.style.visibility = '';
+    if (fall) fall.remove();
+    detail.classList.remove('show', 'flying');
+    board.innerHTML = '';
+    board.style.transform = '';
+    swing.cancel();
+    chromeAnims.forEach(a => a.cancel());
+    chromeAnims = [];
+    dhead.style.visibility = '';
+    cur = null;
+    isOpen = false;
+    view = 'pile';
+    syncButtons();
+
+    await Promise.all(anims.map(a => a.finished.catch(() => {})));
+    anims = [];
+    indexEl.style.minHeight = '';
+    settle();
+  }
+
+  /* ---------------- switching between folders of the same row ---------------- */
+  async function switchTo(p) {
+    if (busy || !isOpen || !cur || p === cur.main) return;
+    busy = true;
+    clearTimeout(viewTimer);
+    const B = folderOf(p);
+    const pulled = `translateX(${D.H * .36}px) rotate(.8deg)`;
+    // Pull the folder out by its tab, drop it on top, slide it back in.
+    const pull = B.panel.animate([{ transform: 'none' }, { transform: pulled }],
+      { duration: ms(320), easing: 'cubic-bezier(.25,.8,.4,1)', fill: 'forwards' });
+    await pull.finished;
+    setMain(p);
+    const push = B.panel.animate([{ transform: pulled }, { transform: 'none' }],
+      { duration: ms(480), easing: 'cubic-bezier(.6,0,.3,1)' });
+    pull.cancel();
+    await push.finished;
+    if (history.state && history.state.detail) history.replaceState({ detail: 1, ri: cur.ri, pi: p }, '', '#folder');
+    settle();
+  }
+
+  board.addEventListener('click', e => {
+    const tab = e.target.closest('.ptab');
+    if (tab) switchTo(+tab.closest('.panel').dataset.p);
+  });
+  board.addEventListener('keydown', e => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('ptab')) {
+      e.preventDefault();
+      switchTo(+e.target.closest('.panel').dataset.p);
+    }
+  });
+
+  /* ---------------- navigation ---------------- */
+  function goBack() {
+    if (!isOpen && !busy) return;
+    if (history.state && history.state.detail) history.back();
+    else request(closeDetail);
+  }
+  backBtn.addEventListener('click', goBack);
+  addEventListener('keydown', e => { if (e.key === 'Escape') goBack(); });
+  addEventListener('popstate', e => {
+    const s = e.state;
+    if (s && s.detail) { if (!isOpen) request(() => openDetail(s.ri, s.pi, true)); }
+    else request(closeDetail);
+  });
+
+  /* ---------------- pile / spread views ---------------- */
+  function syncButtons() {
+    viewBtns.forEach(b => b.classList.toggle('on', b.dataset.view === view));
+  }
+
+  function applyView(animate) {
+    const t = viewT(view), papers = allPapers();
+    clearTimeout(viewTimer);
+    board.classList.toggle('anim', animate);
+    papers.forEach(q => q.el.classList.toggle('anim', animate));
+    board.style.transform = tf(t.cx, t.cy, 0, t.s);
+    papers.forEach(placePaper);
+    const h = docH(view);
+    if (!animate) { detail.style.height = h + 'px'; return; }
+    if (h > detail.offsetHeight) detail.style.height = h + 'px';
+    viewTimer = setTimeout(() => {
+      board.classList.remove('anim');
+      papers.forEach(q => q.el.classList.remove('anim'));
+      detail.style.height = h + 'px';
+    }, ms(850));
+  }
+
+  viewBtns.forEach(b => b.addEventListener('click', () => {
+    if (!isOpen || busy || b.dataset.view === view) return;
+    view = b.dataset.view;
+    syncButtons();
+    applyView(true);
+    if (view === 'spread') window.scrollTo({ top: 0, behavior: RM ? 'auto' : 'smooth' });
+  }));
+
+  /* ---------------- dragging papers ---------------- */
+  function raise(f, q) {
+    q.z = ++f.zTop;
+    if (q.id === 'pink' && f.receipt.attached && view === 'pile') f.receipt.z = ++f.zTop;
+    f.papers.forEach(placePaper);
+  }
+
+  board.addEventListener('pointerdown', e => {
+    const pe = e.target.closest('.paper');
+    if (!pe || busy || !isOpen) return;
+    const f = cur.folders.find(x => x.panel.contains(pe));
+    const q = f.papers.find(x => x.el === pe);
+    e.preventDefault();
+    pe.setPointerCapture(e.pointerId);
+    clearTimeout(viewTimer);
+    board.classList.remove('anim');
+    allPapers().forEach(x => x.el.classList.remove('anim'));
+    raise(f, q);
+
+    const rc = f.receipt;
+    const vt = viewT(view), scale = vt.s * D.H;
+    // The part of the folder that is actually on screen (in pile view it runs off the left edge).
+    const boardLeft = vt.cx - (D.W * vt.s) / 2;
+    const visL = Math.max(0, -boardLeft / scale), visR = Math.min(RATIO, (D.vw - boardLeft) / scale);
+    const sx = e.clientX, sy = e.clientY;
+    const q0 = { ...q.pos[view] };
+    const carry = q.id === 'pink' && rc.attached && view === 'pile' ? { ...rc.pos.pile } : null;
+    let moved = false;
+    pe.classList.add('pressed');
+
+    const move = ev => {
+      if (!moved) {
+        if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 3) return;
+        moved = true;
+        pe.classList.remove('pressed');
+        pe.classList.add('dragging');
+        if (carry) rc.el.classList.add('dragging');
+        if (q === rc) rc.attached = false;
+      }
+      // Keep at least a corner of every paper on the visible folder so nothing gets lost off-screen.
+      const v = q.pos[view], { w, h } = q.cfg;
+      v.x = clamp(visL - w * .8, q0.x + (ev.clientX - sx) / scale, visR - w * .2);
+      v.y = clamp(-h * .6, q0.y + (ev.clientY - sy) / scale, 1 - h * .2);
+      placePaper(q);
+      if (carry) {
+        rc.pos.pile.x = carry.x + (v.x - q0.x);
+        rc.pos.pile.y = carry.y + (v.y - q0.y);
+        placePaper(rc);
+      }
+    };
+    const up = () => {
+      pe.classList.remove('pressed', 'dragging');
+      rc.el.classList.remove('dragging');
+      pe.removeEventListener('pointermove', move);
+      pe.removeEventListener('pointerup', up);
+      pe.removeEventListener('pointercancel', up);
+    };
+    pe.addEventListener('pointermove', move);
+    pe.addEventListener('pointerup', up);
+    pe.addEventListener('pointercancel', up);
+  });
+
+  /* ---------------- boot ---------------- */
+  function onResize() {
+    if (busy) { resizePending = true; return; }
+    measure();
+    layoutRows();
+    if (isOpen) { sizeBoard(); applyView(false); }
+  }
+  addEventListener('resize', onResize);
+
+  if (location.hash === '#folder') history.replaceState(null, '', location.pathname + location.search);
+  measure();
+  buildStack();
+  layoutRows();
+})();
+</script>
+</body>
+</html>
